@@ -3,10 +3,11 @@ mod errors;
 mod token_manager;
 mod onedrive_manager;
 
+use std::sync::Arc;
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use reqwest::Url;
 use serde::Deserialize;
-use crate::config::{config, OneDrive};
+use crate::config::{config, Config, OneDrive};
 use crate::errors::UnrecoverableError;
 use crate::onedrive_manager::list_drives;
 use crate::token_manager::Tokens;
@@ -17,12 +18,12 @@ struct Params {
 }
 
 struct AppState {
-    onedrive: OneDrive,
+    config: Arc<Config>,
 }
 
 #[get("/code")]
 async fn hello(data: web::Data<AppState>, params: web::Query<Params>) -> impl Responder {
-    if let Err(e) = Tokens::from_code(&data.onedrive, &params.code).await {
+    if let Err(e) = Tokens::from_code(&data.config.onedrive, &params.code).await {
         HttpResponse::InternalServerError().body(e.to_string())
     } else {
         HttpResponse::Ok().body("Access granted!")
@@ -32,39 +33,40 @@ async fn hello(data: web::Data<AppState>, params: web::Query<Params>) -> impl Re
 #[actix_web::main]
 async fn main() -> Result<(), UnrecoverableError> {
     // Load configuration
-    let config = config()?;
-    
+    let config = Arc::new(config()?);
+     
     // Main sync function
-    list_drives(&config.onedrive).await;
+    let c = config.clone();
+    tokio::spawn(async move { list_drives(&c.onedrive).await });
 
     // Authentication/authorization function
-    let config_onedrive = config.onedrive.clone();
+    let c = config.clone();
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(AppState {
-                onedrive: config_onedrive.clone(),
+                config: c.clone(),
             }))
             .service(hello)
-            .service(web::redirect("/grant", build_access_request_url()))
+            .service(web::redirect("/grant", build_access_request_url(&c.clone().onedrive)))
     })
         .workers(4)
         .bind(("127.0.0.1", 8000))?
         .run()
         .await?;
-    
+   
     Ok(())
 }
 
 /// Builds an access request url and returns an url encoded version of it
 ///
-fn build_access_request_url() -> String {
+fn build_access_request_url(config: &OneDrive) -> String {
     let base_url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
-    let params = [
-        ("client_id", "067c54ae-88b9-41e9-9e73-ad348da01fc4"),
+    let params: [(&str, &str); 5] = [
+        ("client_id", &config.client_id),
         ("response_type", "code"),
-        ("redirect_uri", "http://localhost:8000/code"),
+        ("redirect_uri", &config.redirect_uri),
         ("response_mode", "query"),
-        ("scope", "offline_access Files.Read Files.Read.All Files.ReadWrite Files.ReadWrite.All"),
+        ("scope", &config.scope),
     ];
 
     let url = Url::parse_with_params(base_url, &params).unwrap();
