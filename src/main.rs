@@ -22,7 +22,7 @@ struct AppState {
 }
 
 #[get("/code")]
-async fn hello(data: web::Data<AppState>, params: web::Query<Params>) -> impl Responder {
+async fn code(data: web::Data<AppState>, params: web::Query<Params>) -> impl Responder {
     if let Err(e) = Tokens::from_code(&data.config.onedrive, &params.code).await {
         HttpResponse::InternalServerError().body(e.to_string())
     } else {
@@ -46,7 +46,7 @@ async fn main() -> Result<(), UnrecoverableError> {
             .app_data(web::Data::new(AppState {
                 config: c.clone(),
             }))
-            .service(hello)
+            .service(code)
             .service(web::redirect("/grant", build_access_request_url(&c.clone().onedrive)))
     })
         .workers(4)
