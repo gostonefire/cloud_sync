@@ -5,7 +5,6 @@ pub async fn list_drives(config: &OneDrive) {
     let mut tokens = Tokens::from_file(&config.tokens_path).await.unwrap();
     if tokens.is_expired() {
         tokens.refresh_tokens(config).await.unwrap();
-        tokens.save_tokens().await.unwrap();
     }
 
     let access_token = tokens.get_access_token();

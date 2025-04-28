@@ -22,11 +22,7 @@ struct AppState {
 
 #[get("/code")]
 async fn hello(data: web::Data<AppState>, params: web::Query<Params>) -> impl Responder {
-    if let Err(e) = Tokens::from_code(&data.onedrive, &params.code)
-        .await
-        .save_tokens()
-        .await 
-    {
+    if let Err(e) = Tokens::from_code(&data.onedrive, &params.code).await {
         HttpResponse::InternalServerError().body(e.to_string())
     } else {
         HttpResponse::Ok().body("Access granted!")

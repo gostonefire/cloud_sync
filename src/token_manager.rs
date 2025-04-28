@@ -34,7 +34,7 @@ impl Tokens {
     ///
     /// * 'config' - configuration struct for OneDrive
     /// * 'code' - code from an initiated OAuth2.0 code flow
-    pub async fn from_code(config: &OneDrive, code: &str) -> Self {
+    pub async fn from_code(config: &OneDrive, code: &str) -> Result<Self, TokenError> {
         let body: [(&str, &str);6] = [
             ("client_id", &config.client_id),
             ("scope", &config.scope),
@@ -50,14 +50,14 @@ impl Tokens {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .form(&body)
             .send()
-            .await.unwrap();
+            .await?;
 
-        let json = resp.text().await.unwrap();
+        let json = resp.text().await?;
 
-        let import: TokensImport = serde_json::from_str(&json).unwrap();
+        let import: TokensImport = serde_json::from_str(&json)?;
         let granted_at = Utc::now();
 
-        Tokens {
+        let tokens = Tokens {
             token_type: import.token_type,
             scope: import.scope,
             expires_in: import.expires_in,
@@ -66,7 +66,11 @@ impl Tokens {
             refresh_token: import.refresh_token,
             granted_at,
             refreshed_at: granted_at,
-        }
+        };
+        
+        tokens.save_tokens(&config.tokens_path).await?;
+        
+        Ok(tokens)
     }
 
     /// Creates a new Tokens instance from file
@@ -89,9 +93,12 @@ impl Tokens {
 
     /// Saves self as json to file
     ///
-    pub async fn save_tokens(&self) -> Result<(), TokenError> {
+    /// # Arguments
+    ///
+    /// * 'tokens_path' - path to file holding tokens
+    async fn save_tokens(&self, tokens_path: &str) -> Result<(), TokenError> {
         let json = serde_json::to_string(&self)?;
-        fs::write("tokens.json", json)?;
+        fs::write(tokens_path, json)?;
         
         Ok(())
     }
@@ -138,6 +145,6 @@ impl Tokens {
         self.refresh_token = import.refresh_token;
         self.refreshed_at = Utc::now();
 
-        self.save_tokens().await
+        self.save_tokens(&config.tokens_path).await
     }
 }
