@@ -1,15 +1,18 @@
-mod config;
+mod initialization;
 mod errors;
 mod token_manager;
 mod onedrive_manager;
+mod cloud_sync;
+mod onedrive_model;
 
+use log::info;
 use std::sync::Arc;
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use reqwest::Url;
 use serde::Deserialize;
-use crate::config::{config, Config, OneDrive};
+use crate::initialization::{config, Config, OneDrive};
 use crate::errors::UnrecoverableError;
-use crate::onedrive_manager::list_drives;
+use crate::cloud_sync::sync_loop;
 use crate::token_manager::Tokens;
 
 #[derive(Deserialize)]
@@ -36,10 +39,12 @@ async fn main() -> Result<(), UnrecoverableError> {
     let config = Arc::new(config()?);
      
     // Main sync function
+    info!("starting main sync function");
     let c = config.clone();
-    tokio::spawn(async move { list_drives(&c.onedrive).await });
+    tokio::spawn(async move { sync_loop(&c).await });
 
     // Authentication/authorization function
+    info!("starting authentication/authorization function");
     let c = config.clone();
     HttpServer::new(move || {
         App::new()

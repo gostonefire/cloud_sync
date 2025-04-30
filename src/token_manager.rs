@@ -1,8 +1,10 @@
 use std::fs;
+use std::path::Path;
 use chrono::{DateTime, Utc};
+use log::warn;
 use serde::{Deserialize, Serialize};
-use crate::config::OneDrive;
-use crate::errors::TokenError;
+use crate::initialization::{Config, OneDrive};
+use crate::errors::{CloudSyncError, TokenError};
 
 #[derive(Deserialize)]
 struct TokensImport {
@@ -73,16 +75,31 @@ impl Tokens {
         Ok(tokens)
     }
 
-    /// Creates a new Tokens instance from file
+    /// Creates a new Tokens instance from file. If the file is missing a warning is issued
+    /// and the function tries again every 60 seconds.
     ///
     /// # Arguments
     /// 
     /// * 'tokens_path' - path to file holding tokens
     pub async fn from_file(tokens_path: &str) -> Result<Self, TokenError> {
-        let json = fs::read_to_string(tokens_path)?;
-        let tokens: Tokens = serde_json::from_str(&json)?;
+        let path = Path::new(tokens_path);
+        let mut file_warning_issued = false;
+        loop {
+            if path.exists() {
+                let json = fs::read_to_string(tokens_path)?;
+                let tokens: Tokens = serde_json::from_str(&json)?;
 
-        Ok(tokens)
+                return Ok(tokens);
+
+            } else {
+                if !file_warning_issued {   
+                    warn!("token file missing, please authenticate/authorize cloud_sync");
+                    file_warning_issued = true;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                continue;
+            }
+        }
     }
 
     /// Returns the access token
@@ -103,6 +120,16 @@ impl Tokens {
         Ok(())
     }
 
+    /// Removes the tokens file
+    ///
+    /// # Arguments
+    ///
+    /// * 'tokens_path' - path to file holding tokens
+    async fn remove_tokens(&self, tokens_path: &str) -> Result<(), TokenError> {
+        fs::remove_file(tokens_path)?;
+        Ok(())
+    }
+    
     /// Checks if the access token needs to be refreshed
     ///
     pub fn is_expired(&self) -> bool {
@@ -133,6 +160,12 @@ impl Tokens {
             .send()
             .await?;
 
+        if !resp.status().is_success() {
+            warn!("refresh token process failed, removing tokens file");
+            self.remove_tokens(&config.tokens_path).await?;
+            return Err(TokenError::RefreshTokenExpired);
+        }
+        
         let json = resp.text().await?;
 
         let import: TokensImport = serde_json::from_str(&json)?;
@@ -146,5 +179,29 @@ impl Tokens {
         self.refreshed_at = Utc::now();
 
         self.save_tokens(&config.tokens_path).await
+    }
+}
+
+/// Returns a valid access token
+///
+/// # Arguments
+///
+/// * 'config' - configuration struct
+pub async fn get_token(config: &Config) -> Result<String, CloudSyncError> {
+    loop {
+        let mut tokens = Tokens::from_file(&config.onedrive.tokens_path).await?;
+        if tokens.is_expired() {
+            match tokens.refresh_tokens(&config.onedrive).await {
+                Ok(_) => (),
+                Err(e) => {
+                    match e {
+                        TokenError::RefreshTokenExpired => continue,
+                        _ => return Err(e.into()),
+                    }
+                }
+            }
+        }
+
+        return Ok(tokens.get_access_token());
     }
 }

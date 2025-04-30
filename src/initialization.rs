@@ -17,14 +17,19 @@ pub struct Config {
     pub onedrive: OneDrive,
 }
 
-/// Returns a configuration struct for the application
+/// Returns a configuration struct for the application and starts logging
 /// 
 pub fn config() -> Result<Config, ConfigError> {
     let config_dir = env::var("CONFIG_DIR")
         .expect("Error getting CONFIG_DIR");
 
+    let log_path = format!("{}logging.yaml", config_dir);
+    log4rs::init_file(log_path, Default::default())
+        .map_err(|e| ConfigError(format!("Unable to start logging: {}", e.to_string())))?;
+    
     load_config(&config_dir)
 }
+
 
 /// Loads the configuration file and returns a struct with all configuration items
 ///
