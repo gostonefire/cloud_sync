@@ -4,6 +4,7 @@ mod token_manager;
 mod onedrive_manager;
 mod cloud_sync;
 mod onedrive_model;
+mod aws_manager;
 
 use log::info;
 use std::sync::Arc;

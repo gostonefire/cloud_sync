@@ -1,5 +1,14 @@
 use std::fmt;
 use std::fmt::Formatter;
+use aws_sdk_s3::operation::put_object::PutObjectError;
+use aws_sdk_s3::config::http::HttpResponse;
+use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadError;
+use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadError;
+use aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingError;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
+use aws_sdk_s3::operation::upload_part::UploadPartError;
+use aws_smithy_runtime_api::client::result::SdkError;
+use reqwest::header::ToStrError;
 
 /// Error representing an unrecoverable error that will halt the application
 /// 
@@ -95,6 +104,12 @@ impl fmt::Display for CloudSyncError {
 impl From<TokenError> for CloudSyncError {
     fn from(e: TokenError) -> Self { CloudSyncError::OneDrive(e.to_string()) }
 }
+impl From<OneDriveError> for CloudSyncError {
+    fn from(e: OneDriveError) -> Self { CloudSyncError::OneDrive(e.to_string()) }
+}
+impl From<AWSError> for CloudSyncError {
+    fn from(e: AWSError) -> Self { CloudSyncError::AWS(e.to_string()) }
+}
 
 /// Errors while managing OneDrive
 ///
@@ -109,8 +124,44 @@ impl From<reqwest::Error> for OneDriveError {
         OneDriveError(e.to_string())
     }
 }
+impl From<ToStrError> for OneDriveError {
+    fn from(e: ToStrError) -> Self {
+        OneDriveError(e.to_string())
+    }
+}
 impl From<serde_json::Error> for OneDriveError {
     fn from(e: serde_json::Error) -> Self {
         OneDriveError(e.to_string())
     }
+}
+
+
+/// Errors while managing AWS
+///
+pub struct AWSError(pub String);
+impl fmt::Display for AWSError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "AWSError: {}", self.0)
+    }
+}
+impl From<aws_sdk_s3::Error> for AWSError {
+    fn from(e: aws_sdk_s3::Error) -> Self { AWSError(e.to_string()) }
+}
+impl From<SdkError<PutObjectError, HttpResponse>> for AWSError {
+    fn from(e: SdkError<PutObjectError, HttpResponse>) -> Self { AWSError(e.to_string()) }
+}
+impl From<SdkError<GetObjectTaggingError, HttpResponse>> for AWSError {
+    fn from(e: SdkError<GetObjectTaggingError, HttpResponse>) -> Self { AWSError(e.to_string()) }
+}
+impl From<SdkError<ListObjectsV2Error, HttpResponse>> for AWSError {
+    fn from(e: SdkError<ListObjectsV2Error, HttpResponse>) -> Self { AWSError(e.to_string()) }
+}
+impl From<SdkError<CreateMultipartUploadError, HttpResponse>> for AWSError {
+    fn from(e: SdkError<CreateMultipartUploadError, HttpResponse>) -> Self { AWSError(e.to_string()) }
+}
+impl From<SdkError<UploadPartError, HttpResponse>> for AWSError {
+    fn from(e: SdkError<UploadPartError, HttpResponse>) -> Self { AWSError(e.to_string()) }
+}
+impl From<SdkError<CompleteMultipartUploadError, HttpResponse>> for AWSError {
+    fn from(e: SdkError<CompleteMultipartUploadError, HttpResponse>) -> Self { AWSError(e.to_string()) }
 }
