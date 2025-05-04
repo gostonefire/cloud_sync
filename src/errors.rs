@@ -4,7 +4,7 @@ use aws_sdk_s3::operation::put_object::PutObjectError;
 use aws_sdk_s3::config::http::HttpResponse;
 use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadError;
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadError;
-use aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingError;
+use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
 use aws_sdk_s3::operation::upload_part::UploadPartError;
 use aws_smithy_runtime_api::client::result::SdkError;
@@ -158,8 +158,8 @@ impl From<aws_sdk_s3::Error> for AWSError {
 impl From<SdkError<PutObjectError, HttpResponse>> for AWSError {
     fn from(e: SdkError<PutObjectError, HttpResponse>) -> Self { AWSError(e.to_string()) }
 }
-impl From<SdkError<GetObjectTaggingError, HttpResponse>> for AWSError {
-    fn from(e: SdkError<GetObjectTaggingError, HttpResponse>) -> Self { AWSError(e.to_string()) }
+impl From<SdkError<HeadObjectError, HttpResponse>> for AWSError {
+    fn from(e: SdkError<HeadObjectError, HttpResponse>) -> Self { AWSError(e.to_string()) }
 }
 impl From<SdkError<ListObjectsV2Error, HttpResponse>> for AWSError {
     fn from(e: SdkError<ListObjectsV2Error, HttpResponse>) -> Self { AWSError(e.to_string()) }

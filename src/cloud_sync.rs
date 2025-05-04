@@ -41,23 +41,26 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
         let access_token = get_token(&config).await?;
         one_drive.set_access_token(&access_token);
         
-        println!("Get OneDrive deltas!");
+        info!("Get OneDrive deltas!");
         let deltas = one_drive.get_delta().await?;
-        println!("Get S3 objects!");
-        let objects = aws.list_objects().await?;
+        if !deltas.is_empty() {
+            info!("Get S3 objects!");
+            let objects = aws.list_objects().await?;
 
-        println!("Checking objects!");
-        for d in deltas.iter().filter(|f| f.file) {
-            if objects.iter().find(|o| o.filename == d.filename && o.size.unwrap_or(0) == d.size).is_none() {
-                println!("OneDrive: {:?}", d);
-                if d.size > AWS::get_chunk_size() {
-                    upload_file(&one_drive, &aws, &d.item_id, &d.filename, d.size, &d.ext_mod_date).await?;
-                } else {
-                    copy_file(&one_drive, &aws, &d.item_id, &d.filename, d.size, &d.ext_mod_date).await?
+            info!("Checking objects!");
+            for d in deltas.into_iter().filter(|f| f.file) {
+                if objects.iter().find(|o| o.filename == d.filename && o.size.unwrap_or(0) == d.size).is_none() {
+                    info!("Syncing: {:?}", d.filename);
+                    if d.size > AWS::get_chunk_size() {
+                        upload_file(&one_drive, &aws, &d.item_id, &d.filename, d.size, d.content_type, d.mtime).await?;
+                    } else {
+                        copy_file(&one_drive, &aws, &d.item_id, &d.filename, d.size, d.content_type, d.mtime).await?
+                    }
                 }
             }
         }
-        println!("Done Checking objects!");
+        one_drive.save_delta_link().await?;
+        info!("Done Checking objects!");
 
         tokio::time::sleep(tokio::time::Duration::from_secs(600)).await;
     }
@@ -74,16 +77,16 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
 /// * 'item_id' - OneDrive item id representing the file to copy
 /// * 'filename' - filename and path
 /// * 'size' - size of the file on OneDrive
-/// * 'ext_mod_date' - last modification date from OneDrive, will end up as a tag on the S3 object
-async fn copy_file(one_drive: &OneDrive, aws: &AWS, item_id: &str, filename: &str, size: u64, ext_mod_date: &str) -> Result<(), CloudSyncError> {
+/// * 'content_type' - the file Content-Type
+/// * 'mtime' - last modification datetime as a timestamp 
+async fn copy_file(one_drive: &OneDrive, aws: &AWS, item_id: &str, filename: &str, size: u64, content_type: Option<String>, mtime: String) -> Result<(), CloudSyncError> {
     let download_url = one_drive.get_download_url(item_id).await?;
     let content = one_drive.get_file(&download_url).await?;
     if content.len() != size as usize {
-        error!("download size mismatch");
         return Err(CloudSyncError::OneDrive("download size mismatch".to_string()));
     };
         
-    aws.put_object(filename, ext_mod_date, content).await?;
+    aws.put_object(filename, content_type, mtime, content).await?;
     
     Ok(())
 }
@@ -99,13 +102,14 @@ async fn copy_file(one_drive: &OneDrive, aws: &AWS, item_id: &str, filename: &st
 /// * 'item_id' - OneDrive item id representing the file to copy
 /// * 'filename' - filename and path
 /// * 'size' - size of the file on OneDrive
-/// * 'ext_mod_date' - last modification date from OneDrive, will end up as a tag on the S3 object
-async fn upload_file(one_drive: &OneDrive, aws: &AWS, item_id: &str, filename: &str, size: u64, ext_mod_date: &str) -> Result<(), CloudSyncError> {
+/// * 'content_type' - the file Content-Type
+/// * 'mtime' - last modification datetime as a timestamp 
+async fn upload_file(one_drive: &OneDrive, aws: &AWS, item_id: &str, filename: &str, size: u64, content_type: Option<String>, mtime: String) -> Result<(), CloudSyncError> {
     AWS::check_for_multipart_upload(size)?;
     let chunk_size = AWS::get_chunk_size();
-
+    
     let url = one_drive.get_download_url(item_id).await?;
-    let (mut upload_parts, upload_id) = aws.create_multipart_upload(filename, ext_mod_date).await?;
+    let (mut upload_parts, upload_id) = aws.create_multipart_upload(filename, content_type, mtime).await?;
     
     let chunk = Chunk::new(size, chunk_size);
     for (part, from, to) in chunk {

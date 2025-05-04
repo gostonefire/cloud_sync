@@ -1,10 +1,10 @@
+use std::str::FromStr;
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
-use log::error;
 use crate::errors::AWSError;
 
 const CHUNK_SIZE: u64 = 1024 * 1024 * 10;
@@ -42,71 +42,34 @@ impl AWS {
     /// Should only be used for smaller objects such as 10MB or smaller, otherwise use the
     /// multipart upload functions
     ///
-    /// If returned response indicates zero size an error is returned
-    ///
     /// # Arguments
     ///
     /// * 'object_name' - name and path to be used in the S3 bucket
-    /// * 'ext_mod_date' - a string representing a datetime from the source
+    /// * 'content_type' - the file Content-Type
+    /// * 'mtime' - last modification datetime as a timestamp
     /// * 'bytes' - the file content
-    pub async fn put_object(&self, object_name: &str, ext_mod_date: &str, bytes: Vec<u8>) -> Result<(), AWSError> {
-        let file_size = bytes.len() as u64;
+    pub async fn put_object(&self, object_name: &str, content_type: Option<String>, mtime: String, bytes: Vec<u8>) -> Result<(), AWSError> {
         let body = ByteStream::from(bytes);
-        let response = self.client
+        let _ = self.client
             .put_object()
             .bucket(&self.bucket)
             .key(object_name)
-            .set_tagging(Some(format!("ext_mod_date={}", ext_mod_date)))
+            .metadata("mtime", mtime)
+            .set_content_type(content_type)
             .body(body)
             .send()
             .await?;
-        
-        match response.size() {
-            None => {
-                error!("no response size returned");
-                Err(AWSError::from("no response size returned"))
-            }
-            Some(size) => {
-                if file_size != size as u64 {
-                    error!("response size mismatch");
-                    Err(AWSError::from("response size mismatch"))
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-    
-    /// Returns the ext_mod_date tag value if it exists on the object in the S3 bucket
-    ///
-    /// # Arguments
-    ///
-    /// * 'object_name' - name and path for the object in the S3 bucket 
-    pub async fn get_ext_mod_date(&self, object_name: &str) -> Result<Option<String>, AWSError> {
-        let response = self.client
-            .get_object_tagging()
-            .bucket(&self.bucket)
-            .key(object_name)
-            .send()
-            .await?;
 
-        let value = response.tag_set()
-            .iter()
-            .filter(|t| t.key == "ext_mod_date")
-            .map(|t| &t.value)
-            .last()
-            .map(|v| v.clone());
-        
-        Ok(value)
+        Ok(())
     }
-    
+
     /// Lists all objects in the S3 bucket.
     ///
     pub async fn list_objects(&self) -> Result<Vec<ObjectInfo>, AWSError> {
         let mut response = self.client
             .list_objects_v2()
             .bucket(&self.bucket)
-            .max_keys(100) 
+            .max_keys(100)
             .into_paginator()
             .send();
 
@@ -131,6 +94,37 @@ impl AWS {
         Ok(objects)
     }
 
+    /// Returns the mtime metadata attribute from the object
+    /// The mtime attribute is a timestamp reflecting the last modified date time
+    /// 
+    /// # Arguments
+    ///
+    /// * 'object_name' - name and path to the S3 object
+    pub async fn get_mtime(&self, object_name: &str) -> Result<Option<i64>, AWSError> {
+        let result = self.client
+            .head_object()
+            .bucket(&self.bucket)
+            .key(object_name)
+            .send()
+            .await?;
+
+        if let Some(metadata) = result.metadata {
+            if let Some(mtime) = metadata.get("mtime") {
+                let trimmed = if mtime.contains('.') {
+                    mtime.split_once('.').unwrap().0
+                } else {
+                    &mtime
+                };
+
+                Ok(i64::from_str(trimmed).ok())
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Checks so the file size won't exceed max number of parts
     /// 
     /// # Arguments
@@ -151,9 +145,9 @@ impl AWS {
             Ok(())
         }
     }
-    
+
     /// Returns the chunk size
-    /// 
+    ///
     pub fn get_chunk_size() -> u64 {
         CHUNK_SIZE
     }
@@ -166,22 +160,22 @@ impl AWS {
     /// # Arguments
     ///
     /// * 'object_name' - name and path to be used in the S3 bucket
-    /// * 'ext_mod_date' - a string representing a datetime from the source
-    pub async fn create_multipart_upload(&self, object_name: &str, ext_mod_date: &str) -> Result<(Vec<CompletedPart>, String), AWSError> {
+    /// * 'content_type' - the file Content-Type
+    /// * 'mtime' - last modification datetime as a timestamp
+    pub async fn create_multipart_upload(&self, object_name: &str, content_type: Option<String>, mtime: String) -> Result<(Vec<CompletedPart>, String), AWSError> {
         let multipart_upload_res: CreateMultipartUploadOutput = self.client
             .create_multipart_upload()
             .bucket(&self.bucket)
             .key(object_name)
-            .set_tagging(Some(format!("ext_mod_date={}", ext_mod_date)))
+            .metadata("mtime", mtime)
+            .set_content_type(content_type)
             .send()
             .await?;
 
-        let upload_id = multipart_upload_res.upload_id()
-            .ok_or({
-                error!("upload id not retrieved");
-                AWSError::from("upload id not retrieved")
-            })?;
-        
+        let upload_id = multipart_upload_res.upload_id().ok_or({
+            AWSError::from("upload id not retrieved")
+        })?;
+
         let upload_parts: Vec<CompletedPart> = Vec::new();
         
         Ok((upload_parts, upload_id.to_string()))

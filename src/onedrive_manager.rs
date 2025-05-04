@@ -9,7 +9,8 @@ pub struct ItemInfo {
     pub filename: String,
     pub item_id: String,
     pub size: u64,
-    pub ext_mod_date: String,
+    pub mtime: String,
+    pub content_type: Option<String>,
     pub file: bool,
 }
 
@@ -23,6 +24,7 @@ pub struct OneDrive {
     client: reqwest::Client,
     access_token: String,
     delta_link_path: String,
+    delta_link: DataDeltaLink,
 }
 
 impl OneDrive {
@@ -39,6 +41,10 @@ impl OneDrive {
             client,
             access_token: String::default(),
             delta_link_path: delta_link_path.to_string(),
+            delta_link: DataDeltaLink {
+                data_delta_link: String::default(),
+                date_time: Default::default(),
+            }
         })
     }
 
@@ -120,7 +126,7 @@ impl OneDrive {
     
     /// Returns all deltas since last call for deltas
     ///
-    pub async fn get_delta(&self) -> Result<Vec<ItemInfo>, OneDriveError> {
+    pub async fn get_delta(&mut self) -> Result<Vec<ItemInfo>, OneDriveError> {
         let auth = format!("Bearer {}", self.access_token);
 
         let mut url: String = if let Some(delta_link) = self.get_delta_link().await? {
@@ -142,12 +148,11 @@ impl OneDrive {
             }
 
             let json = res.text().await?;
-            dump_json(&json).await;
             
             let delta: Root = serde_json::from_str(&json)?;
             if let Some(value) = delta.value {
                 value.into_iter()
-                    .filter(|v| v.parent_reference.path.is_some())
+                    .filter(|v| v.parent_reference.path.is_some() && v.deleted.is_none())
                     .for_each(|v| deltas.push(OneDrive::item_info(v)));
             }
 
@@ -155,7 +160,7 @@ impl OneDrive {
                 url = next_url;
                 continue;
             } else if let Some(delta_link) = delta._odata_delta_link {
-                self.save_delta_link(&delta_link).await?;
+                self.store_delta_link(delta_link);
                 return Ok(deltas);
             } else {
                 return Err(OneDriveError("no next or delta link returned".to_string()));
@@ -177,18 +182,24 @@ impl OneDrive {
         }
     }
     
-    /// Saves a data delta link to file
+    /// Stores the delta link in self
     /// 
     /// # Arguments
     /// 
-    /// * 'data_delta_link' - the link to save
-    async fn save_delta_link(&self, data_delta_link: &str) -> Result<(), OneDriveError> {
-        let link = DataDeltaLink {
-            data_delta_link: data_delta_link.to_string(),
+    /// * 'delta_link' - the data delta link to store
+    fn store_delta_link(&mut self, delta_link: String) {
+        self.delta_link = DataDeltaLink {
+            data_delta_link: delta_link,
             date_time: Utc::now(),
-        };
-        
-        let json = serde_json::to_string_pretty(&link)?;
+        }
+    }
+    
+    /// Saves the data delta link
+    /// If this function is called before calling the function get_delta, the previous
+    /// existing data delta link will be saved 
+    /// 
+    pub async fn save_delta_link(&self) -> Result<(), OneDriveError> {
+        let json = serde_json::to_string_pretty(&self.delta_link)?;
         tokio::fs::write(&self.delta_link_path, json).await?;
         
         Ok(())
@@ -204,20 +215,23 @@ impl OneDrive {
             .unwrap()
             .split_once(':')
             .unwrap().1
-            .to_string() + "/" + &value.name;
+            .to_string() + "/" + &value.name.unwrap();
         
-       filename = filename.trim_start_matches('/').to_string();
+        filename = filename.trim_start_matches('/').to_string();
+
+        let (file, content_type) = if let Some(file) = value.file {
+            (true, file.mime_type)
+        } else {
+            (false, None)
+        };
         
-       ItemInfo {
-           filename,
-           item_id: value.id,
-           size: value.size,
-           ext_mod_date: value.last_modified_date_time,
-           file: value.file.is_some(),
+        ItemInfo {
+            filename,
+            item_id: value.id,
+            size: value.size,
+            mtime: value.last_modified_date_time.unwrap().timestamp().to_string(),
+            content_type,
+            file,
         }
     }
-}
-
-async fn dump_json(json: &str) {
-    tokio::fs::write("dump.json", json).await.unwrap();
 }
