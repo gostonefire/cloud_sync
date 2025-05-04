@@ -134,6 +134,11 @@ impl From<serde_json::Error> for OneDriveError {
         OneDriveError(e.to_string())
     }
 }
+impl From<std::io::Error> for OneDriveError {
+    fn from(e: std::io::Error) -> Self {
+        OneDriveError(e.to_string())
+    }
+}
 
 
 /// Errors while managing AWS
@@ -143,6 +148,9 @@ impl fmt::Display for AWSError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "AWSError: {}", self.0)
     }
+}
+impl From<&str> for AWSError {
+    fn from(e: &str) -> Self { AWSError(e.to_string()) }
 }
 impl From<aws_sdk_s3::Error> for AWSError {
     fn from(e: aws_sdk_s3::Error) -> Self { AWSError(e.to_string()) }

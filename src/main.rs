@@ -5,6 +5,7 @@ mod onedrive_manager;
 mod cloud_sync;
 mod onedrive_model;
 mod aws_manager;
+mod chunk;
 
 use log::info;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use reqwest::Url;
 use serde::Deserialize;
 use crate::initialization::{config, Config, OneDrive};
 use crate::errors::UnrecoverableError;
-use crate::cloud_sync::sync_loop;
+use crate::cloud_sync::sync;
 use crate::token_manager::Tokens;
 
 #[derive(Deserialize)]
@@ -42,7 +43,7 @@ async fn main() -> Result<(), UnrecoverableError> {
     // Main sync function
     info!("starting main sync function");
     let c = config.clone();
-    tokio::spawn(async move { sync_loop(&c).await });
+    tokio::spawn(async move { sync(&c).await });
 
     // Authentication/authorization function
     info!("starting authentication/authorization function");

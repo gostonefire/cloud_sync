@@ -9,12 +9,21 @@ pub struct OneDrive {
     pub client_secret: String,
     pub scope: String,
     pub tokens_path: String,
-    pub drive_id: String,
+    pub delta_link_path: String,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct AWS {
+    access_key_id: String,
+    secret_access_key: String,
+    region: String,
+    pub bucket: String,
 }
 
 #[derive(Deserialize)]
 pub struct Config {
     pub onedrive: OneDrive,
+    pub aws: AWS,
 }
 
 /// Returns a configuration struct for the application and starts logging
@@ -27,7 +36,13 @@ pub fn config() -> Result<Config, ConfigError> {
     log4rs::init_file(log_path, Default::default())
         .map_err(|e| ConfigError(format!("Unable to start logging: {}", e.to_string())))?;
     
-    load_config(&config_dir)
+    let config = load_config(&config_dir)?;
+    
+    env::set_var("AWS_ACCESS_KEY_ID", &config.aws.access_key_id);
+    env::set_var("AWS_SECRET_ACCESS_KEY", &config.aws.secret_access_key);
+    env::set_var("AWS_REGION", &config.aws.region);
+    
+    Ok(config)
 }
 
 

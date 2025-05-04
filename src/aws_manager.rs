@@ -1,10 +1,10 @@
-use std::path::Path;
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
-use aws_sdk_s3::primitives::{ByteStream, Length};
+use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use log::error;
 use crate::errors::AWSError;
 
 const CHUNK_SIZE: u64 = 1024 * 1024 * 10;
@@ -12,7 +12,7 @@ const MAX_CHUNKS: u64 = 10000;
 
 pub struct ObjectInfo {
     pub filename: String,
-    pub size: Option<i64>,
+    pub size: Option<u64>,
 }
 
 pub struct AWS {
@@ -27,7 +27,7 @@ impl AWS {
     /// # Arguments
     ///
     /// * 'bucket' - the AWS S3 bucket to use
-    pub async fn new(bucket: String) -> Self {
+    pub async fn new(bucket: &str) -> Self {
         let region_provider = RegionProviderChain::default_provider();
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(region_provider)
@@ -35,7 +35,7 @@ impl AWS {
             .await;
         let client = Client::new(&config);
 
-        AWS { client, bucket }
+        AWS { client, bucket: bucket.to_string() }
     }
 
     /// Puts an object to the S3 bucket
@@ -49,7 +49,8 @@ impl AWS {
     /// * 'object_name' - name and path to be used in the S3 bucket
     /// * 'ext_mod_date' - a string representing a datetime from the source
     /// * 'bytes' - the file content
-    pub async fn put_object(&self, object_name: &str, ext_mod_date: &str, bytes: Vec<u8>) -> Result<i64, AWSError> {
+    pub async fn put_object(&self, object_name: &str, ext_mod_date: &str, bytes: Vec<u8>) -> Result<(), AWSError> {
+        let file_size = bytes.len() as u64;
         let body = ByteStream::from(bytes);
         let response = self.client
             .put_object()
@@ -59,8 +60,21 @@ impl AWS {
             .body(body)
             .send()
             .await?;
-
-        response.size().ok_or(AWSError("zero size reported".to_owned()))
+        
+        match response.size() {
+            None => {
+                error!("no response size returned");
+                Err(AWSError::from("no response size returned"))
+            }
+            Some(size) => {
+                if file_size != size as u64 {
+                    error!("response size mismatch");
+                    Err(AWSError::from("response size mismatch"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
     }
     
     /// Returns the ext_mod_date tag value if it exists on the object in the S3 bucket
@@ -104,7 +118,7 @@ impl AWS {
                         if let Some(key) = &object.key {
                             objects.push(ObjectInfo{
                                 filename: key.clone(),
-                                size: object.size,
+                                size: object.size.map(|v| v as u64),
                             })
                         }
                     }
@@ -116,18 +130,44 @@ impl AWS {
         }
         Ok(objects)
     }
+
+    /// Checks so the file size won't exceed max number of parts
+    /// 
+    /// # Arguments
+    /// 
+    /// * 'file_size' - size of file to upload
+    pub fn check_for_multipart_upload(file_size: u64) -> Result<(), AWSError> {
+        let mut chunk_count = (file_size / CHUNK_SIZE) + 1;
+        let size_of_last_chunk = file_size % CHUNK_SIZE;
+        if size_of_last_chunk == 0 {
+            chunk_count -= 1;
+        }
+
+        if file_size == 0 {
+            Err(AWSError::from("file size is zero"))
+        } else if chunk_count > MAX_CHUNKS {
+            Err(AWSError::from("chunk count exceeded maximum"))
+        } else {
+            Ok(())
+        }
+    }
     
+    /// Returns the chunk size
+    /// 
+    pub fn get_chunk_size() -> u64 {
+        CHUNK_SIZE
+    }
     
-    /// Uploads an object to the S3 bucket using a multipart upload
-    /// Should be used for objects larger than 10MB, otherwise use the put object function
+    /// Creates a multipart upload
+    /// This function is the starting point of a multipart file upload
+    ///
+    /// It returns a tuple of Vec<CompletedPart> and an upload id to be later used
     /// 
     /// # Arguments
     ///
     /// * 'object_name' - name and path to be used in the S3 bucket
     /// * 'ext_mod_date' - a string representing a datetime from the source
-    /// * '' - REPLACE ONCE SUITABLE METHOD IS FOUND
-    pub async fn upload_object(&self, object_name: &str, ext_mod_date: &str, bytes: Vec<u8>) -> Result<(), AWSError> {
-        // Create multipart upload
+    pub async fn create_multipart_upload(&self, object_name: &str, ext_mod_date: &str) -> Result<(Vec<CompletedPart>, String), AWSError> {
         let multipart_upload_res: CreateMultipartUploadOutput = self.client
             .create_multipart_upload()
             .bucket(&self.bucket)
@@ -137,67 +177,58 @@ impl AWS {
             .await?;
 
         let upload_id = multipart_upload_res.upload_id()
-            .ok_or(AWSError("upload id not retrieved".to_owned()))?;
+            .ok_or({
+                error!("upload id not retrieved");
+                AWSError::from("upload id not retrieved")
+            })?;
+        
+        let upload_parts: Vec<CompletedPart> = Vec::new();
+        
+        Ok((upload_parts, upload_id.to_string()))
+    }
 
-        let path = Path::new("C:/Slask/tmp/test.tif");
-        let file_size = tokio::fs::metadata(path)
-            .await
-            .expect("it exists I swear")
-            .len();
+    /// Uploads a part given as a vector of bytes
+    /// It also needs a mutable reference to the vector upload_parts which will be updated
+    /// for each call to this function
+    ///
+    /// # Arguments
+    ///
+    /// * 'object_name' - name and path to be used in the S3 bucket
+    /// * 'upload_id' - id retrieved from the call to create_multipart_upload function
+    /// * 'part_number' - part number starting with 1 and shall increment by one for each call
+    /// * 'bytes' - a vector of file data
+    /// * 'upload_parts' - a mutable reference to upload_parts retrieved from the call to create_multipart_upload function
+    pub async fn upload_part(&self, object_name: &str, upload_id: &str, part_number: i32, bytes: Vec<u8>, upload_parts: &mut Vec<CompletedPart>) -> Result<(), AWSError> {
+        let stream = ByteStream::from(bytes);
+        
+        let upload_part_res = self.client
+            .upload_part()
+            .key(object_name)
+            .bucket(&self.bucket)
+            .upload_id(upload_id)
+            .body(stream)
+            .part_number(part_number)
+            .send()
+            .await?;
 
-        let mut chunk_count = (file_size / CHUNK_SIZE) + 1;
-        let mut size_of_last_chunk = file_size % CHUNK_SIZE;
-        if size_of_last_chunk == 0 {
-            size_of_last_chunk = CHUNK_SIZE;
-            chunk_count -= 1;
-        }
-
-        if file_size == 0 {
-            eprintln!("Bad file size.");
-            return Ok(());
-        }
-        if chunk_count > MAX_CHUNKS {
-            eprintln!("Too many chunks [{}]! Try increasing your chunk size.", chunk_count);
-            return Ok(());
-        }
-
-        let mut upload_parts: Vec<CompletedPart> = Vec::new();
-
-        for chunk_index in 0..chunk_count {
-            let this_chunk = if chunk_count - 1 == chunk_index {
-                size_of_last_chunk
-            } else {
-                CHUNK_SIZE
-            };
-            let stream = ByteStream::read_from()
-                .path(path)
-                .offset(chunk_index * CHUNK_SIZE)
-                .length(Length::Exact(this_chunk))
-                .build()
-                .await
-                .unwrap();
-
-            // Chunk index needs to start at 0, but part numbers start at 1.
-            let part_number = (chunk_index as i32) + 1;
-            let upload_part_res = self.client
-                .upload_part()
-                .key(object_name)
-                .bucket(&self.bucket)
-                .upload_id(upload_id)
-                .body(stream)
+        upload_parts.push(
+            CompletedPart::builder()
+                .e_tag(upload_part_res.e_tag.unwrap_or_default())
                 .part_number(part_number)
-                .send()
-                .await?;
+                .build(),
+        );
+        
+        Ok(())
+    }
 
-            upload_parts.push(
-                CompletedPart::builder()
-                    .e_tag(upload_part_res.e_tag.unwrap_or_default())
-                    .part_number(part_number)
-                    .build(),
-            );
-        }
-
-        // upload_parts: Vec<aws_sdk_s3::types::CompletedPart>
+    /// Completes a multipart upload
+    ///
+    /// # Arguments
+    ///
+    /// * 'object_name' - name and path to be used in the S3 bucket
+    /// * 'upload_id' - id retrieved from the call to create_multipart_upload function
+    /// * 'upload_parts' - the final upload_parts
+    pub async fn complete_multipart_upload(&self, object_name: &str, upload_id: &str, upload_parts: Vec<CompletedPart>) -> Result<(), AWSError> {
         let completed_multipart_upload: CompletedMultipartUpload = CompletedMultipartUpload::builder()
             .set_parts(Some(upload_parts))
             .build();
@@ -210,6 +241,7 @@ impl AWS {
             .upload_id(upload_id)
             .send()
             .await?;
+        
         Ok(())
     }
 }
