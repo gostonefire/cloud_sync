@@ -40,7 +40,7 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
     let aws = AWS::new(&config.aws.bucket).await;
     
     loop {
-        sleep_until_time(1, 0, 0).await;
+        sleep_until_time(&config.general.sync_time).await;
         
         let access_token = get_token(&config).await?;
         one_drive.set_access_token(&access_token);
@@ -75,12 +75,10 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
 /// 
 /// # Arguments
 /// 
-/// * 'hour' - the hour to wake up
-/// * 'min' - the minute to wake up
-/// * 'sec' - the second to wake up
-async fn sleep_until_time(hour: u32, min: u32, sec: u32) {
+/// * 'time' - the time to wake up in format %H:%M:%S (e.g. 00:01:00)
+async fn sleep_until_time(time: &str) {
     let now = Local::now();
-    let mut proposed = Local::now().with_time(NaiveTime::from_hms_opt(hour, min, sec).unwrap()).unwrap();
+    let mut proposed = Local::now().with_time(NaiveTime::parse_from_str(time, "%H:%M:%S").unwrap()).unwrap();
 
     if proposed <= now {
         proposed = proposed.add(TimeDelta::days(1));

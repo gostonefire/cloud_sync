@@ -20,10 +20,16 @@ pub struct AWS {
     pub bucket: String,
 }
 
+#[derive(Deserialize, Clone)]
+pub struct General {
+    pub sync_time: String,
+}
+
 #[derive(Deserialize)]
 pub struct Config {
     pub onedrive: OneDrive,
     pub aws: AWS,
+    pub general: General,
 }
 
 /// Returns a configuration struct for the application and starts logging
