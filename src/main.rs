@@ -64,7 +64,7 @@ async fn main() -> Result<(), UnrecoverableError> {
     Ok(())
 }
 
-/// Builds an access request url and returns an url encoded version of it
+/// Builds an access request url and returns a url encoded version of it
 ///
 fn build_access_request_url(config: &OneDrive) -> String {
     let base_url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
