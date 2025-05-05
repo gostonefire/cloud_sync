@@ -31,7 +31,7 @@ impl OneDrive {
     
     /// Returns a new OneDrive struct
     /// 
-    pub fn new(delta_link_path: &str) -> Result<Self, OneDriveError> {
+    pub fn new(delta_link_path: &str, access_token: String) -> Result<Self, OneDriveError> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(30))
@@ -39,7 +39,7 @@ impl OneDrive {
         
         Ok(OneDrive {
             client,
-            access_token: String::default(),
+            access_token,
             delta_link_path: delta_link_path.to_string(),
             delta_link: DataDeltaLink {
                 data_delta_link: String::default(),

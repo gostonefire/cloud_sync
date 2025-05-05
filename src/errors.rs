@@ -56,6 +56,7 @@ impl From<toml::de::Error> for ConfigError {
 /// 
 #[derive(Debug)]
 pub enum TokenError {
+    NoTokensFile,
     RefreshTokenExpired,
     FileIO(String),
     Request(String),
@@ -63,6 +64,7 @@ pub enum TokenError {
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
+            TokenError::NoTokensFile        => write!(f, "TokenError::NoTokensFile"),
             TokenError::RefreshTokenExpired => write!(f, "TokenError::RefreshTokenExpired"),
             TokenError::FileIO(e)   => write!(f, "TokenError::File: {}", e),
             TokenError::Request(e)  => write!(f, "TokenError::Request: {}", e),
@@ -90,19 +92,30 @@ impl From<reqwest::Error> for TokenError {
 ///
 #[derive(Debug)]
 pub enum CloudSyncError {
+    TokenExpiredWarning,
+    TokenError(String),
     OneDrive(String),
     AWS(String),
 }
 impl fmt::Display for CloudSyncError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            CloudSyncError::OneDrive(e) => write!(f, "SyncError::OneDrive: {}", e),
-            CloudSyncError::AWS(e)      => write!(f, "SyncError::AWS: {}", e),
+            CloudSyncError::TokenExpiredWarning   => write!(f, "CloudSyncError::TokenExpiredWarning"),
+            CloudSyncError::TokenError(e) => write!(f, "CloudSyncError::TokenError: {}", e),
+            CloudSyncError::OneDrive(e)   => write!(f, "CloudSyncError::OneDrive: {}", e),
+            CloudSyncError::AWS(e)        => write!(f, "CloudSyncError::AWS: {}", e),
         }
     }
 }
 impl From<TokenError> for CloudSyncError {
-    fn from(e: TokenError) -> Self { CloudSyncError::OneDrive(e.to_string()) }
+    fn from(e: TokenError) -> Self {
+        match e {
+            TokenError::NoTokensFile => { CloudSyncError::TokenExpiredWarning }
+            TokenError::RefreshTokenExpired => { CloudSyncError::TokenExpiredWarning }
+            TokenError::FileIO(err) => { CloudSyncError::TokenError(err) }
+            TokenError::Request(err) => { CloudSyncError::TokenError(err) }
+        }
+    }
 }
 impl From<OneDriveError> for CloudSyncError {
     fn from(e: OneDriveError) -> Self { CloudSyncError::OneDrive(e.to_string()) }
