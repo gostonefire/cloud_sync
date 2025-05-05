@@ -9,7 +9,7 @@ pub struct ItemInfo {
     pub filename: String,
     pub item_id: String,
     pub size: u64,
-    pub mtime: String,
+    pub mtime: i64,
     pub content_type: Option<String>,
     pub file: bool,
 }
@@ -229,7 +229,7 @@ impl OneDrive {
             filename,
             item_id: value.id,
             size: value.size,
-            mtime: value.last_modified_date_time.unwrap().timestamp().to_string(),
+            mtime: value.last_modified_date_time.unwrap().timestamp(),
             content_type,
             file,
         }

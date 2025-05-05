@@ -48,14 +48,14 @@ impl AWS {
     /// * 'content_type' - the file Content-Type
     /// * 'mtime' - last modification datetime as a timestamp
     /// * 'bytes' - the file content
-    pub async fn put_object(&self, object_name: &str, content_type: Option<String>, mtime: String, bytes: Vec<u8>) -> Result<(), AWSError> {
+    pub async fn put_object(&self, object_name: &str, content_type: &Option<String>, mtime: i64, bytes: Vec<u8>) -> Result<(), AWSError> {
         let body = ByteStream::from(bytes);
         let _ = self.client
             .put_object()
             .bucket(&self.bucket)
             .key(object_name)
-            .metadata("mtime", mtime)
-            .set_content_type(content_type)
+            .metadata("mtime", mtime.to_string())
+            .set_content_type(content_type.clone())
             .body(body)
             .send()
             .await?;
@@ -162,13 +162,13 @@ impl AWS {
     /// * 'object_name' - name and path to be used in the S3 bucket
     /// * 'content_type' - the file Content-Type
     /// * 'mtime' - last modification datetime as a timestamp
-    pub async fn create_multipart_upload(&self, object_name: &str, content_type: Option<String>, mtime: String) -> Result<(Vec<CompletedPart>, String), AWSError> {
+    pub async fn create_multipart_upload(&self, object_name: &str, content_type: &Option<String>, mtime: i64) -> Result<(Vec<CompletedPart>, String), AWSError> {
         let multipart_upload_res: CreateMultipartUploadOutput = self.client
             .create_multipart_upload()
             .bucket(&self.bucket)
             .key(object_name)
-            .metadata("mtime", mtime)
-            .set_content_type(content_type)
+            .metadata("mtime", mtime.to_string())
+            .set_content_type(content_type.clone())
             .send()
             .await?;
 
