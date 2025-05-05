@@ -1,4 +1,7 @@
+use std::ops::Add;
+use chrono::{Local, NaiveTime, TimeDelta};
 use log::{error, info};
+use tokio::time::{Instant, Duration};
 use crate::aws_manager::AWS;
 use crate::chunk::Chunk;
 use crate::initialization::Config;
@@ -22,7 +25,6 @@ pub async fn sync(config: &Config) {
             },
             Err(e) => {
                 error!("sync failed: {}", e);
-                tokio::time::sleep(tokio::time::Duration::from_secs(600)).await;
             }
         }
     }
@@ -38,6 +40,8 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
     let aws = AWS::new(&config.aws.bucket).await;
     
     loop {
+        sleep_until_time(1, 0, 0).await;
+        
         let access_token = get_token(&config).await?;
         one_drive.set_access_token(&access_token);
         
@@ -61,8 +65,30 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
         one_drive.save_delta_link().await?;
         info!("done checking objects!");
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(600)).await;
+        
     }
+}
+
+/// Will sleep until next given time in local timezone
+/// Avoid using hours 02 and 03 since they are behaving differently when passing between
+/// normal time and daylight saving time
+/// 
+/// # Arguments
+/// 
+/// * 'hour' - the hour to wake up
+/// * 'min' - the minute to wake up
+/// * 'sec' - the second to wake up
+async fn sleep_until_time(hour: u32, min: u32, sec: u32) {
+    let now = Local::now();
+    let mut proposed = Local::now().with_time(NaiveTime::from_hms_opt(hour, min, sec).unwrap()).unwrap();
+
+    if proposed <= now {
+        proposed = proposed.add(TimeDelta::days(1));
+    }
+
+    info!("sleeps until: {:?}", proposed);
+    let duration_as_secs = (proposed - now).num_seconds() as u64;
+    tokio::time::sleep_until(Instant::now() + Duration::from_secs(duration_as_secs)).await;
 }
 
 /// Returns true if there is a difference in a file between OneDrive and AWS
