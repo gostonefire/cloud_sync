@@ -67,13 +67,10 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
         info!("get OneDrive deltas!");
         let deltas = mgr.one_drive.get_delta().await?;
         if !deltas.is_empty() {
-            info!("get S3 objects!");
-            let objects = mgr.aws.list_objects().await?;
-
             info!("checking objects!");
             for f in deltas.into_iter().filter(|f| f.file) {
-                if let Some(t) = objects.iter().find(|o| f.filename == o.filename) {
-                    if backup_needed(&mgr.aws, &t.filename, f.size, t.size, f.mtime).await? {
+                if let Some(t) = &mgr.aws.get_object_info(&f.filename).await? {
+                    if backup_needed(f.size, t.size, f.mtime, t.mtime).await? {
                         info!("updating file: {:?}", f.filename);
                         backup_file(&mut mgr, &f.item_id, &f.filename, f.size, &f.content_type, f.mtime).await?;
                     }
@@ -131,13 +128,12 @@ async fn check_tokens(mgr: &mut Mgr<'_>) -> Result<(), CloudSyncError> {
 /// 
 /// # Arguments
 /// 
-/// * 'aws' - A references to the AWS struct instance
-/// * 't-filename' - filename in AWS (to)
 /// * 'f_size' - file size from OneDrive (from)
 /// * 't_size' - file size from AWS (to)
 /// * 'f_mtime' - last modification time as timestamp from OneDrive (from)
-async fn backup_needed(aws: &AWS, t_filename: &str, f_size: u64, t_size: Option<u64>, f_mtime: i64) -> Result<bool, CloudSyncError> {
-    if let Some(t_mtime) = aws.get_mtime(t_filename).await? {
+/// * 't_mtime' - last modification time as timestamp from AWS (to)
+async fn backup_needed(f_size: u64, t_size: Option<u64>, f_mtime: i64, t_mtime: Option<i64>) -> Result<bool, CloudSyncError> {
+    if let Some(t_mtime) = t_mtime {
         if f_mtime != t_mtime {
             return Ok(true);
         }

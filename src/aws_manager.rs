@@ -3,15 +3,18 @@ use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
+use aws_sdk_s3::operation::head_object::{HeadObjectError, HeadObjectOutput};
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use aws_smithy_runtime_api::client::orchestrator::HttpResponse;
+use aws_smithy_runtime_api::client::result::SdkError;
 use crate::errors::AWSError;
 
 const CHUNK_SIZE: u64 = 1024 * 1024 * 10;
 const MAX_CHUNKS: u64 = 10000;
 
 pub struct ObjectInfo {
-    pub filename: String,
+    pub mtime: Option<i64>,
     pub size: Option<u64>,
 }
 
@@ -63,68 +66,83 @@ impl AWS {
         Ok(())
     }
 
-    /// Lists all objects in the S3 bucket.
+    /// Returns object information och which the mtime attribute is a timestamp
+    /// reflecting the last modified date time
     ///
-    pub async fn list_objects(&self) -> Result<Vec<ObjectInfo>, AWSError> {
-        let mut response = self.client
-            .list_objects_v2()
-            .bucket(&self.bucket)
-            .max_keys(100)
-            .into_paginator()
-            .send();
-
-        let mut objects: Vec<ObjectInfo> = Vec::new();
-        while let Some(result) = response.next().await {
-            match result {
-                Ok(output) => {
-                    for object in output.contents() {
-                        if let Some(key) = &object.key {
-                            objects.push(ObjectInfo{
-                                filename: key.clone(),
-                                size: object.size.map(|v| v as u64),
-                            })
-                        }
-                    }
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
-        }
-        Ok(objects)
-    }
-
-    /// Returns the mtime metadata attribute from the object
-    /// The mtime attribute is a timestamp reflecting the last modified date time
-    /// 
     /// # Arguments
     ///
     /// * 'object_name' - name and path to the S3 object
-    pub async fn get_mtime(&self, object_name: &str) -> Result<Option<i64>, AWSError> {
+    pub async fn get_object_info(&self, object_name: &str) -> Result<Option<ObjectInfo>, AWSError> {
         let result = self.client
             .head_object()
             .bucket(&self.bucket)
             .key(object_name)
             .send()
-            .await?;
+            .await;
 
-        if let Some(metadata) = result.metadata {
-            if let Some(mtime) = metadata.get("mtime") {
-                let trimmed = if mtime.contains('.') {
-                    mtime.split_once('.').unwrap().0
-                } else {
-                    &mtime
-                };
-
-                Ok(i64::from_str(trimmed).ok())
-            } else {
-                Ok(None)
+        let response: Option<ObjectInfo> = match result {
+            Ok(head) => { 
+                Some(Self::construct_object_info(head))
+            },
+            Err(err) => {
+                Self::construct_object_info_error(err)?
             }
-        } else {
-            Ok(None)
-        }
+        };
+
+        Ok(response)
     }
 
+    /// Construct an ObjectInfo instance from the HeadObjectOutput result from
+    /// an AWS S3 head_object() function call
+    ///
+    /// # Arguments
+    ///
+    /// * 'head' - a HeadObjectOutput instance 
+    fn construct_object_info(head: HeadObjectOutput) -> ObjectInfo {
+        let mtime = match head.metadata {
+            Some(metadata) => {
+                if let Some(mtime) = metadata.get("mtime") {
+                    let trimmed = if mtime.contains('.') {
+                        mtime.split_once('.').unwrap().0
+                    } else {
+                        &mtime
+                    };
+
+                    i64::from_str(trimmed).ok()
+                } else {
+                    None
+                }
+            },
+            None => None
+        };
+        
+        ObjectInfo {
+            mtime,
+            size: head.content_length.map(|x| x as u64),
+        }
+    }
+    
+    /// Constructs an AWSError or a None response depending on whether the error is due to
+    /// missing file or an actual error
+    /// 
+    /// # Arguments
+    /// 
+    /// * 'err' - a SdkError<HeadObjectError, HttpResponse> instance
+    fn construct_object_info_error(err: SdkError<HeadObjectError, HttpResponse>) -> Result<Option<ObjectInfo>, AWSError> {
+        match err {
+            SdkError::ServiceError(service_err) => {
+                let http = service_err.raw();
+                match http.status().as_u16() {
+                    404 => {
+                        Ok(None)
+                    },
+                    status => Err(AWSError(format!("HttpStatus: {}", status))),
+                }
+            }
+            _ => Err(AWSError::from(err)),
+        }
+    }
+    
     /// Checks so the file size won't exceed max number of parts
     /// 
     /// # Arguments
