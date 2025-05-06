@@ -33,7 +33,7 @@ pub async fn sync(config: &Config) {
             Err(e) => {
                 match e {
                     CloudSyncError::TokenExpiredWarning => { 
-                        warn!("token expired, visit <host>:8000/code to re-authorize") 
+                        warn!("token expired, visit <host>:8000/grant to re-authorize") 
                     },
                     err => { error!("sync failed: {}", err.to_string()) },
                 }
