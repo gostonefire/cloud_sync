@@ -33,9 +33,9 @@ pub async fn sync(config: &Config) {
             Err(e) => {
                 match e {
                     CloudSyncError::TokenExpiredWarning => { 
-                        warn!("token expired, visit <host>:8000/grant to re-authorize") 
+                        warn!(target: "mail", "token expired, visit http://<host>:8000/grant to re-authorize") 
                     },
-                    err => { error!("sync failed: {}", err.to_string()) },
+                    err => { error!(target: "mail", "sync failed: {}", err.to_string()) },
                 }
             }
         }
@@ -81,7 +81,7 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
             }            
         }
         mgr.one_drive.save_delta_link().await?;
-        info!("done checking objects!");
+        info!(target: "mail", "done checking objects!");
 
         sleep_until_time(&config.general.sync_time).await;
     }

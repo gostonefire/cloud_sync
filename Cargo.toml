@@ -1,6 +1,6 @@
 [package]
 name = "cloud_sync"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
@@ -17,3 +17,5 @@ aws-config = "1.6"
 aws-sdk-s3 = "1.84"
 aws-smithy-runtime-api = "1.8"
 tokio = { version = "1.45", features = ["full"] }
+anyhow = "1.0.98"
+derivative = "2.2"

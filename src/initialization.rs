@@ -1,6 +1,8 @@
 use std::{env, fs};
 use serde::Deserialize;
+use tokio::sync::mpsc::{UnboundedSender};
 use crate::errors::ConfigError;
+use crate::logging::setup_logger;
 
 #[derive(Deserialize, Clone)]
 pub struct OneDrive {
@@ -20,27 +22,36 @@ pub struct AWS {
     pub bucket: String,
 }
 
+#[derive(Deserialize)]
+pub struct MailParameters {
+    pub api_key: String,
+    pub from: String,
+    pub to: String,
+}
+
 #[derive(Deserialize, Clone)]
 pub struct General {
     pub sync_time: String,
+    pub log_path: String,
 }
 
 #[derive(Deserialize)]
 pub struct Config {
     pub onedrive: OneDrive,
     pub aws: AWS,
+    pub mail: MailParameters,
     pub general: General,
 }
 
 /// Returns a configuration struct for the application and starts logging
 /// 
-pub fn config() -> Result<Config, ConfigError> {
+pub fn config(tx: UnboundedSender<String>) -> Result<Config, ConfigError> {
     let config_dir = env::var("CONFIG_DIR")
         .expect("Error getting CONFIG_DIR");
 
-    let log_path = format!("{}logging.yaml", config_dir);
-    log4rs::init_file(log_path, Default::default())
-        .map_err(|e| ConfigError(format!("Unable to start logging: {}", e.to_string())))?;
+    //let log_path = format!("{}logging.yaml", config_dir);
+    //log4rs::init_file(log_path, Default::default())
+    //    .map_err(|e| ConfigError(format!("Unable to start logging: {}", e.to_string())))?;
     
     let config = load_config(&config_dir)?;
     
@@ -48,9 +59,10 @@ pub fn config() -> Result<Config, ConfigError> {
     env::set_var("AWS_SECRET_ACCESS_KEY", &config.aws.secret_access_key);
     env::set_var("AWS_REGION", &config.aws.region);
     
+    setup_logger(&config.general.log_path, tx)?;
+    
     Ok(config)
 }
-
 
 /// Loads the configuration file and returns a struct with all configuration items
 ///
@@ -65,3 +77,7 @@ fn load_config(config_dir: &str) -> Result<Config, ConfigError> {
 
     Ok(config)
 }
+
+
+
+

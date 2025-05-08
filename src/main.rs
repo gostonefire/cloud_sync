@@ -6,15 +6,20 @@ mod cloud_sync;
 mod onedrive_model;
 mod aws_manager;
 mod chunk;
+mod mail_manager;
+mod mail_model;
+mod logging;
 
 use log::info;
 use std::sync::Arc;
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use reqwest::Url;
 use serde::Deserialize;
+use tokio::sync::mpsc;
 use crate::initialization::{config, Config, OneDrive};
 use crate::errors::UnrecoverableError;
 use crate::cloud_sync::sync;
+use crate::mail_manager::mailer;
 use crate::token_manager::Tokens;
 
 #[derive(Deserialize)]
@@ -38,8 +43,14 @@ async fn code(data: web::Data<AppState>, params: web::Query<Params>) -> impl Res
 #[actix_web::main]
 async fn main() -> Result<(), UnrecoverableError> {
     // Load configuration
-    let config = Arc::new(config()?);
+    let (tx, rx) = mpsc::unbounded_channel::<String>();
+    let config = Arc::new(config(tx)?);
      
+    // Mailer
+    info!("starting mailer");
+    let c = config.clone();
+    tokio::spawn(async move { mailer(&c.mail, rx).await });
+    
     // Main sync function
     info!("starting main sync function");
     let c = config.clone();

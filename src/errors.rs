@@ -8,6 +8,8 @@ use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
 use aws_sdk_s3::operation::upload_part::UploadPartError;
 use aws_smithy_runtime_api::client::result::SdkError;
+use log4rs::config::runtime::ConfigErrors;
+use log::SetLoggerError;
 use reqwest::header::ToStrError;
 
 /// Error representing an unrecoverable error that will halt the application
@@ -47,6 +49,16 @@ impl From<std::io::Error> for ConfigError {
 }
 impl From<toml::de::Error> for ConfigError {
     fn from(e: toml::de::Error) -> Self {
+        ConfigError(e.to_string())
+    }
+}
+impl From<SetLoggerError> for ConfigError {
+    fn from(e: SetLoggerError) -> Self {
+        ConfigError(e.to_string())
+    }
+}
+impl From<ConfigErrors> for ConfigError {
+    fn from(e: ConfigErrors) -> Self {
         ConfigError(e.to_string())
     }
 }
@@ -185,4 +197,28 @@ impl From<SdkError<UploadPartError, HttpResponse>> for AWSError {
 }
 impl From<SdkError<CompleteMultipartUploadError, HttpResponse>> for AWSError {
     fn from(e: SdkError<CompleteMultipartUploadError, HttpResponse>) -> Self { AWSError(e.to_string()) }
+}
+
+/// Errors while managing mail
+/// 
+pub enum MailError {
+    InvalidEmailAddress(String),
+    Document(String),
+    SendgridError(String),
+}
+
+impl fmt::Display for MailError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MailError::InvalidEmailAddress(e) => write!(f, "MailError::InvalidEmailAddress: {}", e),
+            MailError::Document(e)            => write!(f, "MailError::Document: {}", e),
+            MailError::SendgridError(e)       => write!(f, "MailError::SendgridError: {}", e),
+        }
+    }
+}
+impl From<serde_json::Error> for MailError {
+    fn from(e: serde_json::Error) -> Self { MailError::Document(e.to_string()) }
+}
+impl From<reqwest::Error> for MailError {
+    fn from(e: reqwest::Error) -> Self { MailError::SendgridError(e.to_string()) }
 }

@@ -896,13 +896,15 @@ dependencies = [
 
 [[package]]
 name = "cloud_sync"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "actix-web",
+ "anyhow",
  "aws-config",
  "aws-sdk-s3",
  "aws-smithy-runtime-api",
  "chrono",
+ "derivative",
  "log",
  "log4rs",
  "reqwest",
