@@ -1,0 +1,28 @@
+[onedrive]
+redirect_uri    = "https://<host.domain:port>/code"
+client_id       = "<App client Id>"
+client_secret   = "<App client secret value>"
+scope           = "offline_access Files.Read Files.Read.All Files.ReadWrite Files.ReadWrite.All"
+tokens_path     = "<full path incl. filename for storing tokens json>"
+delta_link_path = "<full path incl. filename for storing delta link json>"
+
+[aws]
+access_key_id     = "<AWS access key id>"
+secret_access_key = "<AWS access key>"
+region            = "<AWS region>"
+bucket            = "<AWS S3 bucket name (standard bucket)"
+
+[mail]
+api_key           = "<API key for the sendgrid mail service>"
+from              = "<From mail address e.g. MyGrid <name@domain>"
+to                = "<To mail address e.g. Displayname <name@domain>"
+
+[web_server]
+bind_address      = "<server bin IP address>"
+bind_port         = 8000 # or what you like
+tls_private_key   = "<Path incl. filename to TLS private key>"
+tls_chain_cert    = "<Path incl. filename to TLS chain cert>"
+
+[general]
+sync_time         = "01:00:00"     # When to start sync process. Avoid using hours 02 and 03 due to behaviours when passing between normal and daylight saving time
+log_path          = "<Path incl. filename to logfile"
