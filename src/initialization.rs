@@ -29,6 +29,13 @@ pub struct MailParameters {
     pub to: String,
 }
 
+#[derive(Deserialize)]
+pub struct WebServerParameters {
+    pub bind_address: String,
+    pub bind_port: u16,
+}
+
+    
 #[derive(Deserialize, Clone)]
 pub struct General {
     pub sync_time: String,
@@ -40,6 +47,7 @@ pub struct Config {
     pub onedrive: OneDrive,
     pub aws: AWS,
     pub mail: MailParameters,
+    pub web_server: WebServerParameters,
     pub general: General,
 }
 

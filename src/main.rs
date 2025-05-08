@@ -68,7 +68,7 @@ async fn main() -> Result<(), UnrecoverableError> {
             .service(web::redirect("/grant", build_access_request_url(&c.clone().onedrive)))
     })
         .workers(4)
-        .bind(("127.0.0.1", 8000))?
+        .bind((config.web_server.bind_address.as_str(), config.web_server.bind_port))?
         .run()
         .await?;
    
