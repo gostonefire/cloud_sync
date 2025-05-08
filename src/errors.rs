@@ -31,6 +31,12 @@ impl From<std::io::Error> for UnrecoverableError {
         UnrecoverableError(e.to_string())
     }
 }
+impl From<rustls_pki_types::pem::Error> for UnrecoverableError {
+    fn from(e: rustls_pki_types::pem::Error) -> Self { UnrecoverableError(e.to_string()) }
+}
+impl From<rustls::Error> for UnrecoverableError {
+    fn from(e: rustls::Error) -> Self { UnrecoverableError(e.to_string()) }
+}
 
 
 /// Errors while managing configuration
