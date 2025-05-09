@@ -78,3 +78,13 @@ to give it as a wildcard, e.g. "*.domain".
 After Certbot has created private key and cert for the domain, it shows the path to the created files. 
 Enter the path to privkey.pem (tls_private_key) and fullchain.pem (tls_chain_cert) in the cloud_sync config file.
 
+## Running it
+Cloud_sync needs one piece of information to start, the path to the config.toml file.
+That path is given through the environment variable CONFIG_PATH and the path has to end with a slash (/).
+
+So for example in a linux environment it can be easily run in a bash start script where first the 
+CONFIG_PATH is exported and the executable (cloud_sync) is run.
+
+To make it run in the background the start script can be run like e.g. ./start.sh >> /dev/null 2>&1 &
+
+Better solutions can probably easy be found.
