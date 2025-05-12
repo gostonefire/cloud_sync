@@ -59,10 +59,6 @@ pub fn config(tx: UnboundedSender<String>) -> Result<Config, ConfigError> {
     let config_dir = env::var("CONFIG_DIR")
         .expect("Error getting CONFIG_DIR");
 
-    //let log_path = format!("{}logging.yaml", config_dir);
-    //log4rs::init_file(log_path, Default::default())
-    //    .map_err(|e| ConfigError(format!("Unable to start logging: {}", e.to_string())))?;
-    
     let config = load_config(&config_dir)?;
     
     env::set_var("AWS_ACCESS_KEY_ID", &config.aws.access_key_id);
