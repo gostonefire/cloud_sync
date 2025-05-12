@@ -88,3 +88,14 @@ CONFIG_PATH is exported and the executable (cloud_sync) is run.
 To make it run in the background the start script can be run like e.g. ./start.sh >> /dev/null 2>&1 &
 
 Better solutions can probably easy be found.
+
+### Onedrive authorization
+Before cloud_sync can start sync any files it needs a set of access and refresh tokens from Microsoft on 
+behalf of you. So, after starting the server, head to https://<host.domain>:<bind_port>/grant where of course <host.domain>
+is the server you are running cloud_sync within. You will then end up in an OAuth2.0 Code flow where Microsoft will ask
+for you permission to act on your behalf and then send back a code to your defined redirect URL, which in turn will be
+traded for access/refresh tokens, which in turn will be saved where you have defined them to be saved.
+
+At some point the refresh token will also expire. Cloud_sync will at that point write an error to the error log and send 
+that same error to the mail address defined in the config file.
+
