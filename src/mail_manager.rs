@@ -43,6 +43,11 @@ impl Mail {
     /// * 'body' - the body of the mail
     pub async fn send_mail(&self, subject: String, body: String) -> Result<(), MailError> {
 
+        // Temporary inhibiting sending mail until new mailer is configured
+        // Sendgrid will stop free email sending accounts on the 26/7 2025
+        Ok(())
+
+        /*
         let req = Email {
             personalizations: vec![Personalizations { to: vec![self.to.clone()]}],
             from: self.from.clone(),
@@ -61,6 +66,8 @@ impl Mail {
             .await?;
 
         Ok(())
+
+         */
     }
 }
 
