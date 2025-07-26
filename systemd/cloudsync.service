@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloud sync between OneDrv and AWS S3
+After=network-online.target
+
+[Service]
+ExecStart=/bin/bash /home/petste/CloudSync/start.sh
+WorkingDirectory=/home/petste/CloudSync/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+RestartSec=30
+User=root
+
+[Install]
+WantedBy=multi-user.target
+
