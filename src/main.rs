@@ -7,7 +7,6 @@ mod onedrive_model;
 mod aws_manager;
 mod chunk;
 mod mail_manager;
-mod mail_model;
 mod logging;
 
 use log::info;
@@ -51,7 +50,7 @@ async fn main() -> Result<(), UnrecoverableError> {
     info!("starting mailer");
     let c = config.clone();
     tokio::spawn(async move { mailer(&c.mail, rx).await });
-    
+
     // Main sync function
     info!("starting main sync function");
     let c = config.clone();

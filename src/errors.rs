@@ -1,5 +1,5 @@
 use std::fmt;
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 use aws_sdk_s3::operation::put_object::PutObjectError;
 use aws_sdk_s3::config::http::HttpResponse;
 use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadError;
@@ -207,24 +207,14 @@ impl From<SdkError<CompleteMultipartUploadError, HttpResponse>> for AWSError {
 
 /// Errors while managing mail
 /// 
-pub enum MailError {
-    InvalidEmailAddress(String),
-    Document(String),
-    SendgridError(String),
-}
+pub struct MailError(pub String);
 
-impl fmt::Display for MailError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MailError::InvalidEmailAddress(e) => write!(f, "MailError::InvalidEmailAddress: {}", e),
-            MailError::Document(e)            => write!(f, "MailError::Document: {}", e),
-            MailError::SendgridError(e)       => write!(f, "MailError::SendgridError: {}", e),
-        }
-    }
+impl Display for MailError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {write!(f, "MailError: {}", self.0)}
 }
-impl From<serde_json::Error> for MailError {
-    fn from(e: serde_json::Error) -> Self { MailError::Document(e.to_string()) }
+impl From<lettre::transport::smtp::Error> for MailError {
+    fn from(e: lettre::transport::smtp::Error) -> Self { MailError(e.to_string()) }
 }
-impl From<reqwest::Error> for MailError {
-    fn from(e: reqwest::Error) -> Self { MailError::SendgridError(e.to_string()) }
+impl From<lettre::error::Error> for MailError {
+    fn from(e: lettre::error::Error) -> Self { MailError(e.to_string()) }
 }
