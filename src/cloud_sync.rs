@@ -63,7 +63,9 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
     
     loop {
         check_tokens(&mut mgr).await?;
-        
+        let mut updated = 0;
+        let mut added = 0;
+
         info!("get OneDrive deltas!");
         let deltas = mgr.one_drive.get_delta().await?;
         if !deltas.is_empty() {
@@ -73,15 +75,17 @@ async fn sync_loop(config: &Config) -> Result<(), CloudSyncError> {
                     if backup_needed(f.size, t.size, f.mtime, t.mtime).await? {
                         info!("updating file: {:?}", f.filename);
                         backup_file(&mut mgr, &f.item_id, &f.filename, f.size, &f.content_type, f.mtime).await?;
+                        updated += 1;
                     }
                 } else {
                     info!("adding file: {:?}", f.filename);
                     backup_file(&mut mgr, &f.item_id, &f.filename, f.size, &f.content_type, f.mtime).await?;
+                    added += 1;
                 }
             }            
         }
         mgr.one_drive.save_delta_link().await?;
-        info!(target: "mail", "done checking objects!");
+        info!(target: "mail", "Done checking objects! Updates: {}, Adds: {}", updated, added);
 
         sleep_until_time(&config.general.sync_time).await;
     }
