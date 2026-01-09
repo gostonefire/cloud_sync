@@ -1,0 +1,22 @@
+[onedrive]
+redirect_uri    = "https://mygrid.gridfire.org:8000/code"
+scope           = "offline_access Files.Read Files.Read.All Files.ReadWrite Files.ReadWrite.All"
+tokens_path     = "/home/petste/CloudSync/states/tokens.json"
+delta_link_path = "/home/petste/CloudSync/states/delta_link.json"
+
+[aws]
+region            = "eu-north-1"
+bucket            = "backup.stonefire.se"
+
+[mail]
+smtp_endpoint     = "email-smtp.eu-north-1.amazonaws.com"
+from              = "MyGrid <peter.steneld@gridfire.org>"
+to                = "Peter Steneld <peter.steneld@gmail.com>"
+
+[web_server]
+bind_address      = "192.168.1.136"
+bind_port         = 8000
+
+[general]
+sync_time         = "01:00:00"     # When to start sync process. Avoid using hours 02 and 03 due to behaviours when passing between normal and daylight saving time
+log_path          = "/home/petste/CloudSync/logs/cloud_sync.log"

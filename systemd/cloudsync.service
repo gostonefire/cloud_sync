@@ -9,7 +9,14 @@ StandardOutput=inherit
 StandardError=inherit
 Restart=always
 RestartSec=30
-User=root
+User=petste
+
+LoadCredential=onedrive_client_id:/etc/credstore/onedrive_client_id
+LoadCredential=onedrive_client_secret:/etc/credstore/onedrive_client_secret
+LoadCredential=aws_access_key_id:/etc/credstore/aws_access_key_id
+LoadCredential=aws_secret_access_key:/etc/credstore/aws_secret_access_key
+LoadCredential=mail_smtp_user:/etc/credstore/mail_smtp_user
+LoadCredential=mail_smtp_password:/etc/credstore/mail_smtp_password
 
 [Install]
 WantedBy=multi-user.target

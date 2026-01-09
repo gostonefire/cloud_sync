@@ -9,42 +9,47 @@ mod chunk;
 mod mail_manager;
 mod logging;
 
-use log::info;
+use log::{error, info};
 use std::sync::Arc;
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
-use rustls::{ServerConfig, pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::str::FromStr;
+use axum::extract::{Query, State};
+use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Redirect};
+use axum::Router;
+use axum::routing::get;
 use reqwest::Url;
 use serde::Deserialize;
 use tokio::sync::mpsc;
-use crate::initialization::{config, Config, OneDrive, WebServerParameters};
+use crate::initialization::{config, Config, OneDrive};
 use crate::errors::UnrecoverableError;
 use crate::cloud_sync::sync;
 use crate::mail_manager::mailer;
 use crate::token_manager::Tokens;
+
+pub type SharedState = Arc<Config>;
 
 #[derive(Deserialize)]
 struct Params {
     code: String,
 }
 
-struct AppState {
-    config: Arc<Config>,
-}
+async fn code(State(state): State<SharedState>, Query(params): Query<Params>) -> impl IntoResponse {
+    if let Err(e) = Tokens::from_code(&state.onedrive, &params.code).await {
+        (StatusCode::INTERNAL_SERVER_ERROR, [(header::CONTENT_TYPE, "text/plain")], e.to_string())
+            .into_response()
 
-#[get("/code")]
-async fn code(data: web::Data<AppState>, params: web::Query<Params>) -> impl Responder {
-    if let Err(e) = Tokens::from_code(&data.config.onedrive, &params.code).await {
-        HttpResponse::InternalServerError().body(e.to_string())
     } else {
-        HttpResponse::Ok().body("Access granted!")
+        ([(header::CONTENT_TYPE, "text/plain")], "Access granted!")
+            .into_response()
     }
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> Result<(), UnrecoverableError> {
     // Load configuration
     let (tx, rx) = mpsc::unbounded_channel::<String>();
-    let config = Arc::new(config(tx)?);
+    let config: SharedState = Arc::new(config(tx)?);
      
     // Mailer
     info!("starting mailer");
@@ -58,23 +63,27 @@ async fn main() -> Result<(), UnrecoverableError> {
 
     // Authentication/authorization function
     info!("starting authentication/authorization function");
-    let rustls_config = load_rustls_config(&config.web_server)?;
-    let c = config.clone();
-    HttpServer::new(move || {
-        App::new()
-            .app_data(web::Data::new(AppState {
-                config: c.clone(),
-            }))
-            .service(code)
-            .service(web::redirect("/grant", build_access_request_url(&c.clone().onedrive)))
-    })
-        .workers(4)
-        .bind_rustls_0_23((config.web_server.bind_address.as_str(), config.web_server.bind_port), rustls_config)?
-        //.bind((config.web_server.bind_address.as_str(), config.web_server.bind_port))?
-        .run()
-        .await?;
-   
-    Ok(())
+
+    let redirect_url = build_access_request_url(&config.onedrive);
+
+    let app = Router::new()
+        .route("/code", get(code))
+        .route("/grant", get(|| async move { Redirect::to(&redirect_url) }))
+        .with_state(config.clone());
+
+    let ip_addr = Ipv4Addr::from_str(&config.web_server.bind_address).expect("invalid BIND_ADDR");
+    let addr = SocketAddr::new(IpAddr::V4(ip_addr), config.web_server.bind_port);
+
+    let result = axum_server::bind(addr)
+        .serve(app.into_make_service())
+        .await;
+
+    if let Err(e) = result {
+        error!("server error: {}", e);
+        Err(UnrecoverableError(format!("server error: {}", e)))?
+    } else {
+        Ok(())
+    }
 }
 
 /// Builds an access request url and returns a url encoded version of it
@@ -91,27 +100,4 @@ fn build_access_request_url(config: &OneDrive) -> String {
 
     let url = Url::parse_with_params(base_url, &params).unwrap();
     url.to_string()
-}
-
-/// Loads TLS certificates
-/// 
-/// # Arguments
-/// 
-/// * 'config' - web server parameters
-fn load_rustls_config(config: &WebServerParameters) -> Result<ServerConfig, UnrecoverableError> {
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .unwrap();
-
-    // load TLS key/cert files
-    let cert_chain = CertificateDer::pem_file_iter(&config.tls_chain_cert)?
-        .flatten()
-        .collect();
-
-    let key_der =
-        PrivateKeyDer::from_pem_file(&config.tls_private_key).expect("Could not locate PKCS 8 private keys.");
-
-    Ok(ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(cert_chain, key_der)?)
 }
