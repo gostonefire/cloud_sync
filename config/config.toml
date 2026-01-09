@@ -1,5 +1,5 @@
 [onedrive]
-redirect_uri    = "https://mygrid.gridfire.org:8000/code"
+redirect_uri    = "https://sync.gridfire.org/code"
 scope           = "offline_access Files.Read Files.Read.All Files.ReadWrite Files.ReadWrite.All"
 tokens_path     = "/home/petste/CloudSync/states/tokens.json"
 delta_link_path = "/home/petste/CloudSync/states/delta_link.json"
